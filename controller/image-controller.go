@@ -17,7 +17,9 @@ type ImageController struct {
 }
 
 func NewImageController(service *service.ImageService) *ImageController {
-	return &ImageController{}
+	return &ImageController{
+		service: service,
+	}
 }
 
 func (c *ImageController) InitRoutes() {
@@ -29,30 +31,33 @@ func (c *ImageController) InitRoutes() {
 	app.Run(":3000")
 }
 
-func (c ImageController) processImage(ctx *gin.Context) {
-	file, err := c.FormFile("image")
+func (c *ImageController) processImage(ctx *gin.Context) {
+	file, err := ctx.FormFile("image")
 	if err != nil {
-		c.String(http.StatusBadRequest, fmt.Sprintf("get form err: %s", err.Error()))
+		ctx.String(http.StatusBadRequest, fmt.Sprintf("get form err: %s", err.Error()))
 		return
 	}
 
 	tempFile, err := os.CreateTemp("", "uploaded-image-*.jpg")
 	if err != nil {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("create temp file err: %s", err.Error()))
+		ctx.String(http.StatusInternalServerError, fmt.Sprintf("create temp file err: %s", err.Error()))
 		return
 	}
 	defer os.Remove(tempFile.Name())
 
-	if err := c.SaveUploadedFile(file, tempFile.Name()); err != nil {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("upload file err: %s", err.Error()))
+	if err := ctx.SaveUploadedFile(file, tempFile.Name()); err != nil {
+		ctx.String(http.StatusInternalServerError, fmt.Sprintf("upload file err: %s", err.Error()))
 		return
 	}
 
-	cmd := exec.Command("python3", "ml_model/image_processor.py", tempFile.Name())
-	if err := cmd.Run(); err != nil {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("process image err: %s", err.Error()))
+	cmd := exec.Command("python3", "../model/runner.py", tempFile.Name())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, fmt.Sprintf("process image err: %s", err.Error()))
 		return
 	}
 
-	c.String(http.StatusOK, "Image processing completed")
+	outputString := string(output)
+
+	ctx.String(http.StatusOK, outputString)
 }
